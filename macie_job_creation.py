@@ -124,6 +124,7 @@ def create_discovery_job(buckets_to_enable):
 
 if __name__ == '__main__':
     # #Validate mandatory args are present
+    Logger.info("---Macie Job creation script---")
     args = filter_args()
     Logger.debug(f"Args passed to script: {args}")
 
