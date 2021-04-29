@@ -36,7 +36,7 @@ def parse_cfn(policy_array, account_id, region):
             
             elif type(x['Resource']) == dict and list(x['Resource'].keys())[0] == 'Fn::Sub':
                 x['Resource'] = list(x['Resource'].values())[0].replace("${AWS::AccountId}", account_id)
-                x['Resource']= [i].replace("${AWS::Region}", region)
+                x['Resource'] = x['Resource'].replace("${AWS::Region}", region)
 
             ##Conditions
             if x.get('Condition', '') != '': 
