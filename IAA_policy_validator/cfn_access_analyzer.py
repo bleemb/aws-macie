@@ -79,7 +79,7 @@ def parse_cfn(policy_array, account_id, region):
                                 x['Condition'][block][cond] == x['Condition'][block][cond].replace("${AWS::Region}", region)
                         
                         except AttributeError:
-                            Logger.error('Condition does not require parsing')
+                            Logger.info('Error caught - condition does not require parsing')
         return policy_array
 
 
