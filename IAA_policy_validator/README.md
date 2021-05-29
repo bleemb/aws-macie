@@ -6,6 +6,12 @@ and return the findings in various formats.
 
 <br>  
 
+### Requirements
+- IAM role/user with `access-analyzer:ValidatePolicy` IAM permission
+- Script dependencies installed
+
+<br> 
+
 ### Command line arguments:
 ``--path``:  
 Path to the cloudformation template to analyse  

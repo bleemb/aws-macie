@@ -10,7 +10,6 @@ from dotenv import load_dotenv
 
 #Global boto3 clients
 access_client = boto3.client('accessanalyzer')
-iam_client = boto3.client('iam')
 sts_client = boto3.client('sts')
 
 load_dotenv()
