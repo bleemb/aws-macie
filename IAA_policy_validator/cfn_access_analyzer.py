@@ -207,5 +207,5 @@ if __name__ == '__main__':
         try:  
             assert len(results[policy_findings]) == 0
         except AssertionError as e:
-            Logger.error(f"IAA policy validator raised {len(results[policy_findings])} error(s)")
+            print(f"IAA policy validator raised {len(results[policy_findings])} finding(s)")
             raise(e)
