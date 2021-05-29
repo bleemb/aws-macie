@@ -5,20 +5,28 @@ from cfn_flip import to_json
 import argparse
 import retry
 import botocore
+import logging
+from dotenv import load_dotenv
 
 #Global boto3 clients
 access_client = boto3.client('accessanalyzer')
 iam_client = boto3.client('iam')
 sts_client = boto3.client('sts')
 
+load_dotenv()
+
+logging.basicConfig(level=os.environ.get("LOGLEVEL", "ERROR"))
+Logger = logging.getLogger("cfn_policy_validator")
+
 '''
 Argument parser
 Returns command line parsed arguments
 '''
-def parse_args() -> dict:
+def parse_args():
     parser = argparse.ArgumentParser()
     parser.add_argument("--path", action='store', type=file_path, required=True, help="Path to the cfn template to analyse")
     parser.add_argument('--output', action='store', type=str, required=False, choices=['print', 'file'], help= 'Toggle printing output to cli, or writing to a file')
+    parser.add_argument('--ignore_finding_types', action='store', required=False, nargs='+')
     return parser.parse_args()
 
 
@@ -30,6 +38,7 @@ def file_path(string):
     if os.path.isfile(string):
         return string
     else:
+        Logger.error('File does not exist at perscribed path')
         raise FileNotFoundError(string)
 
 
@@ -38,7 +47,7 @@ Cloudformation Parser
 Accepts an array of policy documents and contextual variables, and parses the document
 to filter out the intrinsic functions to provide their computed values
 '''
-def parse_cfn(policy_array, account_id, region) -> dict:
+def parse_cfn(policy_array, account_id, region):
     for policy in policy_array:
         for x in policy['PolicyDocument']['Statement']:
             if type(x['Resource']) == list:
@@ -71,16 +80,16 @@ def parse_cfn(policy_array, account_id, region) -> dict:
                                 x['Condition'][block][cond] == x['Condition'][block][cond].replace("${AWS::Region}", region)
                         
                         except AttributeError:
-                            print('Condition does not require parsing')
+                            Logger.error('Condition does not require parsing')
         return policy_array
 
 
 '''
 Policy Validator
 Iterates through the policy array, executing the IAA validate policy call,
-returning all findings   
+returning all findings that are not listed as ignored findings
 '''
-def validate_policy(policy_array) -> dict:
+def validate_policy(policy_array, ignored_findings):
     results = {}
     for policy in policy_array:
         print(f'---Analysing: {policy["PolicyName"]}---')
@@ -100,23 +109,27 @@ def validate_policy(policy_array) -> dict:
                     policy["PolicyName"]: ''
                 })
                 findings_array = []
-                for finding in findings: 
-                    findings_array.append({
-                        "Finding Code": f"{finding['issueCode']} ({finding['findingType']})",
-                        "Finding Details": finding['findingDetails'],
-                        "Learn more link": finding['learnMoreLink']
-                    })
+                for finding in findings:
+                    if finding['findingType'] not in ignored_findings:
+                        findings_array.append({
+                            "Finding Code": f"{finding['issueCode']} ({finding['findingType']})",
+                            "Finding Details": finding['findingDetails'],
+                            "Learn more link": finding['learnMoreLink']
+                        })
                 
                 results.update({
                     policy["PolicyName"]: findings_array
                 })
                 
             else:
-                print(f"No findings found for {policy['PolicyName']}")
+                Logger.info(f"No findings found for {policy['PolicyName']}")
         
         except access_client.exceptions.InternalServerException: 
-            print(f"Failed to validate {policy['PolicyName']}")
+            Logger.error(f"Failed to validate {policy['PolicyName']} due to Internal Server Error")
             print('\n')
+            next
+        except:
+            Logger.error(f"Failed to validate {policy['PolicyName']}")
             next
     return results
 
@@ -125,21 +138,35 @@ if __name__ == '__main__':
     args = parse_args()
     account_id = sts_client.get_caller_identity()['Account']
     region = os.getenv("REGION")
-    # To do: #Read in parameter file, and be able to parse in Ref functions based off it
+
     path = args.path
     output = args.output
+    if args.ignore_finding_types == None: 
+        ignored_findings = []
+    else:
+        ignored_findings = args.ignore_finding_types
+    print('\n')
+    print('Executing with the following Parameters: ')
+    print(f"Cloudformation path: {str(path)}")
+    print(f"Region: {str(region)}")
+    print(f"Account ID: {str(account_id)}")
+    print(f"Output Type: {str(output)}")
+    print(f"Ignored Finding Types: {str(ignored_findings)}")
+    print('\n')
 
     try:
         extension = path.split('.')[-1]
         with open(path, 'r') as document: 
             if extension == 'yaml' or extension == 'yml':
+                Logger.debug('YAML/YML cloudformation file detected')
                 cfn_template = json.loads(to_json(document.read()))
                 Resources = cfn_template['Resources']
             else:
+                Logger.debug('JSON cloudformation file detected')
                 cfn_template = json.loads(document.read())
                 Resources = cfn_template['Resources']
     except FileNotFoundError as e:
-        print(f"Error when trying to locate path.  Check Path and try again.")
+        Logger.error(f"Error when trying to locate path to Cloudformation file.  Check Path and try again.")
         raise(e)
 
     # Customer managed policies
@@ -157,19 +184,28 @@ if __name__ == '__main__':
                     })
         
     parse_policy_array = parse_cfn(policy_array, account_id, region)
-    print('\n Validating Policies...\n')
-    results = validate_policy(policy_array)
+    
+    Logger.debug('Validating Policies...')
+    results = validate_policy(policy_array, ignored_findings)
     # Optional cmd line parameter for output.
     if output == 'print':
-        print('\n\n ---Findings---\n\n')
-        print(json.dumps(results, indent=4))
+        print('---Findings---')
+        print.info(json.dumps(results, indent=4))
     elif output == 'file':
-        try:
+        if not os.path.isdir('output'):
+            Logger.debug("output folder doesn't exist... Creating")
             os.mkdir('output')
-        except FileExistsError:
-            print('output folder already exists') 
+
         with open('output/results.json', 'w') as doc: 
             json.dump(results, doc, indent=4)
+            Logger.debug("results dumped to output/results.json file")
 
     #Fail if 'results' contains any entries
-    assert len(results) == 0
+    #Policy value may be a blank array if all FindingTypes returned are present in ignore_finding_types param
+    print('\n')
+    for policy_findings in results:
+        try:  
+            assert len(results[policy_findings]) == 0
+        except AssertionError as e:
+            Logger.error(f"IAA policy validator raised {len(results[policy_findings])} error(s)")
+            raise(e)
