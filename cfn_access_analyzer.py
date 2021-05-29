@@ -6,18 +6,26 @@ import argparse
 import retry
 import botocore
 
+#Global boto3 clients
 access_client = boto3.client('accessanalyzer')
 iam_client = boto3.client('iam')
 sts_client = boto3.client('sts')
 
-def parse_args():
+'''
+Argument parser
+Returns command line parsed arguments
+'''
+def parse_args() -> dict:
     parser = argparse.ArgumentParser()
     parser.add_argument("--path", action='store', type=file_path, required=True, help="Path to the cfn template to analyse")
-    parser.add_argument('--output', action='store', type=str, required=True, choices=['print', 'file'], help= 'Toggle printing output to cli, or writing to a file')
+    parser.add_argument('--output', action='store', type=str, required=False, choices=['print', 'file'], help= 'Toggle printing output to cli, or writing to a file')
     return parser.parse_args()
 
 
-# validation on whether path to file is valid
+'''
+File Path validator
+Validates the file path provided via the "--path" command line variable
+'''
 def file_path(string):
     if os.path.isfile(string):
         return string
@@ -25,7 +33,12 @@ def file_path(string):
         raise FileNotFoundError(string)
 
 
-def parse_cfn(policy_array, account_id, region):
+'''
+Cloudformation Parser
+Accepts an array of policy documents and contextual variables, and parses the document
+to filter out the intrinsic functions to provide their computed values
+'''
+def parse_cfn(policy_array, account_id, region) -> dict:
     for policy in policy_array:
         for x in policy['PolicyDocument']['Statement']:
             if type(x['Resource']) == list:
@@ -62,7 +75,12 @@ def parse_cfn(policy_array, account_id, region):
         return policy_array
 
 
-def validate_policy(policy_array):
+'''
+Policy Validator
+Iterates through the policy array, executing the IAA validate policy call,
+returning all findings   
+'''
+def validate_policy(policy_array) -> dict:
     results = {}
     for policy in policy_array:
         print(f'---Analysing: {policy["PolicyName"]}---')
@@ -105,14 +123,12 @@ def validate_policy(policy_array):
 
 if __name__ == '__main__':
     args = parse_args()
-
     account_id = sts_client.get_caller_identity()['Account']
-
     region = os.getenv("REGION")
     # To do: #Read in parameter file, and be able to parse in Ref functions based off it
     path = args.path
-    
     output = args.output
+
     try:
         extension = path.split('.')[-1]
         with open(path, 'r') as document: 
@@ -143,9 +159,13 @@ if __name__ == '__main__':
     parse_policy_array = parse_cfn(policy_array, account_id, region)
     print('\n Validating Policies...\n')
     results = validate_policy(policy_array)
-
+    # Optional cmd line parameter for output.
     if output == 'print':
+        print('\n\n ---Findings---\n\n')
         print(json.dumps(results, indent=4))
-    else:
+    elif output == 'file':
         with open('results.json', 'w') as doc: 
             json.dump(results, doc, indent=4)
+
+    #Fail if 'results' contains any entries
+    assert len(results) == 0
