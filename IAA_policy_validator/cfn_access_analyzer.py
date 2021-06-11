@@ -113,6 +113,7 @@ def validate_policy(policy_array, ignored_findings):
                         findings_array.append({
                             "Finding Code": f"{finding['issueCode']} ({finding['findingType']})",
                             "Finding Details": finding['findingDetails'],
+                            "Location": finding['locations'][0]['path'],
                             "Learn more link": finding['learnMoreLink']
                         })
                 
@@ -189,7 +190,7 @@ if __name__ == '__main__':
     # Optional cmd line parameter for output.
     if output == 'print':
         print('---Findings---')
-        print.info(json.dumps(results, indent=4))
+        Logger.info(json.dumps(results, indent=4))
     elif output == 'file':
         if not os.path.isdir('output'):
             Logger.debug("output folder doesn't exist... Creating")
@@ -207,4 +208,5 @@ if __name__ == '__main__':
             assert len(results[policy_findings]) == 0
         except AssertionError as e:
             print(f"IAA policy validator raised {len(results[policy_findings])} finding(s)")
+            print(json.dumps(results[policy_findings], indent=4))
             raise(e)
