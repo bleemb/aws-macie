@@ -113,7 +113,7 @@ def validate_policy(policy_array, ignored_findings):
                         findings_array.append({
                             "Finding Code": f"{finding['issueCode']} ({finding['findingType']})",
                             "Finding Details": finding['findingDetails'],
-                            "Location": finding['locations'][0]['path'],
+                            "Location": f"{finding['locations'][0]['path'][0]['value']} #{finding['locations'][0]['path'][1]['index']}, Segment '{finding['locations'][0]['path'][2]['value']}'",
                             "Learn more link": finding['learnMoreLink']
                         })
                 
@@ -208,5 +208,5 @@ if __name__ == '__main__':
             assert len(results[policy_findings]) == 0
         except AssertionError as e:
             print(f"IAA policy validator raised {len(results[policy_findings])} finding(s)")
-            print(json.dumps(results[policy_findings], indent=4))
+            print(f"Findings: {json.dumps(results[policy_findings], indent=4)}")
             raise(e)
